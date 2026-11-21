@@ -19,10 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-Third-Party Notices:
-- Schibsted Grotesk typeface (`public/fonts/SchibstedGrotesk-wght.woff2`) is licensed under the SIL Open Font License 1.1; see `public/fonts/OFL.txt`.
-- Archived 2019 Central Kalimantan active fire detections (`public/data/replay-kalteng-2019.json`) are derived from NASA FIRMS EOSDIS VIIRS 375 m standard processing data, subject to the NASA Earth Science Data and Information Policy.
-- Basemap vector tiles, elevation terrain tiles, and satellite imagery are streamed at runtime from OpenFreeMap / OpenStreetMap contributors, AWS Terrain Tiles (Mapzen/Tilezen), and Esri World Imagery under their respective terms.

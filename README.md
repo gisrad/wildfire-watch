@@ -176,4 +176,4 @@ If you reference this tool or its two-tier stationary industrial filter in acade
 
 ## License
 
-Code in this repository is released under the [MIT License](LICENSE).
+Code in this repository is released under the [MIT License](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for font and dataset attributions.
