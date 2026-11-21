@@ -1,0 +1,41 @@
+{
+  "name": "wildfire-watch",
+  "version": "1.0.0",
+  "description": "Real-time Indonesia wildfire & peatland hotspot monitor (NASA FIRMS VIIRS 375m) with stationary industrial/PLTU/smelter & volcano separation, 3D terrain, and historical karhutla replay.",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://fire.transbulent.id",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gisrad/wildfire-watch.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gisrad/wildfire-watch/issues"
+  },
+  "author": "Evans Azka Fajrianshah",
+  "keywords": [
+    "wildfire",
+    "indonesia",
+    "karhutla",
+    "peatland",
+    "nasa-firms",
+    "viirs",
+    "remote-sensing",
+    "maplibre-gl",
+    "gis",
+    "cloudflare-workers",
+    "cloudflare-d1",
+    "astro"
+  ],
+  "scripts": {
+    "dev": "astro dev --host 127.0.0.1 --port 4324",
+    "build": "astro build",
+    "preview": "astro preview --host 127.0.0.1 --port 4324",
+    "bake:replay": "node scripts/bake-replay.mjs",
+    "check:security": "node scripts/security-check.mjs"
+  },
+  "dependencies": {
+    "astro": "5.16.5",
+    "maplibre-gl": "^5.6.0"
+  }
+}

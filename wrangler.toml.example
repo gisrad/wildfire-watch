@@ -1,0 +1,33 @@
+# Cloudflare Worker & D1 configuration template.
+# Setup:
+#   1. Copy this file: cp wrangler.toml.example wrangler.toml
+#   2. Create D1 database: npx wrangler d1 create wildfire-watch
+#   3. Replace database_id below with the ID returned by Wrangler
+#   4. Apply schema: npx wrangler d1 execute wildfire-watch --remote --file=worker/schema.sql
+#   5. Set your NASA FIRMS MAP_KEY secret: npx wrangler secret put FIRMS_MAP_KEY
+
+name = "wildfire-watch"
+main = "worker/index.js"
+compatibility_date = "2026-01-01"
+workers_dev = true
+preview_urls = false
+
+# Optional: bind to a custom domain in Cloudflare DNS
+# routes = [
+#   { pattern = "fire.example.org/*", zone_name = "example.org" },
+#   { pattern = "fire.example.org", custom_domain = true }
+# ]
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+run_worker_first = true
+not_found_handling = "404-page"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "wildfire-watch"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[triggers]
+crons = ["*/30 * * * *"]

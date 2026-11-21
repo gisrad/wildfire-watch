@@ -1,0 +1,43 @@
+cff-version: 1.2.0
+title: "Wildfire Watch (Sentinel Api): Real-Time Indonesia VIIRS Hotspot & Stationary Industrial Thermal Separation"
+message: "If you use this software or methodology in your research, please cite it using the metadata below."
+type: software
+authors:
+  - family-names: "Fajrianshah"
+    given-names: "Evans Azka"
+    affiliation: "National Research and Innovation Agency (BRIN); Graduate School, Universitas Gadjah Mada"
+version: 1.0.0
+date-released: "2026-11-21"
+license: MIT
+url: "https://fire.transbulent.id"
+repository-code: "https://github.com/gisrad/wildfire-watch"
+abstract: >-
+  Real-time webGIS platform and edge ingestion pipeline for monitoring NASA FIRMS VIIRS 375 m active fire detections across the Indonesian archipelago. Implements a two-tier stationary thermal filter separating vegetation and peatland wildfires (karhutla) from coal-fired power plants (PLTU), metallurgical smelters, upstream oil and gas flares, cement/pulp kilns, and active volcanoes while preserving peatland hydrological corridor alerts.
+keywords:
+  - wildfire
+  - karhutla
+  - indonesia
+  - peatland
+  - nasa-firms
+  - viirs
+  - remote-sensing
+  - cloudflare-workers
+  - maplibre-gl
+references:
+  - type: article
+    title: "The New VIIRS 375 m active fire detection data product: Algorithm description and initial assessment"
+    authors:
+      - family-names: "Schroeder"
+        given-names: "Wilfrid"
+      - family-names: "Oliva"
+        given-names: "Patricia"
+      - family-names: "Giglio"
+        given-names: "Louis"
+      - family-names: "Csiszar"
+        given-names: "Ivan A."
+    journal: "Remote Sensing of Environment"
+    year: 2014
+    volume: 143
+    start: 85
+    end: 96
+    doi: "10.1016/j.rse.2013.12.008"

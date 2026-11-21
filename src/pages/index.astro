@@ -1,0 +1,689 @@
+---
+const title = 'Sentinel Api · Peta Titik Panas Karhutla Indonesia Real-Time';
+const description = 'Peta titik panas (hotspot) satelit NASA FIRMS VIIRS 375 m real-time untuk seluruh Indonesia. Memisahkan kebakaran hutan & lahan gambut (karhutla) dari PLTU, smelter, suar migas, dan gunung api aktif.';
+const canonicalUrl = 'https://fire.transbulent.id/';
+const ogImage = 'https://fire.transbulent.id/og-fire.png';
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebApplication',
+      name: 'Sentinel Api',
+      alternateName: 'Wildfire Watch Indonesia',
+      url: canonicalUrl,
+      description,
+      applicationCategory: 'UtilitiesApplication',
+      operatingSystem: 'Web',
+      inLanguage: ['id', 'en'],
+      isAccessibleForFree: true,
+      license: 'https://opensource.org/licenses/MIT',
+      codeRepository: 'https://github.com/gisrad/wildfire-watch',
+      screenshot: ogImage,
+      author: {
+        '@type': 'Person',
+        name: 'Evans Azka Fajrianshah',
+        url: 'https://github.com/gisrad'
+      },
+      spatialCoverage: {
+        '@type': 'Place',
+        name: 'Indonesia',
+        geo: {
+          '@type': 'GeoShape',
+          box: '-11.5 94.0 6.5 141.02'
+        }
+      }
+    },
+    {
+      '@type': 'Dataset',
+      name: 'Indonesia VIIRS 375m Active Fire & Stationary Industrial Thermal Classification (Live & 2019 Central Kalimantan Peat Megafire Replay)',
+      description: 'Real-time and historical 375 m Suomi NPP, NOAA-20, and NOAA-21 VIIRS active fire detections filtered for Indonesian territory and classified into vegetation/peatland wildfires versus stationary coal power plants, smelters, oil-and-gas flares, and active volcanoes.',
+      url: canonicalUrl,
+      sameAs: 'https://github.com/gisrad/wildfire-watch',
+      isAccessibleForFree: true,
+      license: 'https://www.earthdata.nasa.gov/learn/use-data/data-use-policy',
+      keywords: [
+        'wildfire',
+        'karhutla',
+        'Indonesia',
+        'peatland',
+        'gambut',
+        'NASA FIRMS',
+        'VIIRS 375m',
+        'thermal anomaly'
+      ],
+      creator: {
+        '@type': 'Organization',
+        name: 'NASA FIRMS EOSDIS (curated for Indonesia by Sentinel Api)',
+        url: 'https://firms.modaps.eosdis.nasa.gov/'
+      },
+      spatialCoverage: {
+        '@type': 'Place',
+        name: 'Indonesia',
+        geo: {
+          '@type': 'GeoShape',
+          box: '-11.5 94.0 6.5 141.02'
+        }
+      },
+      temporalCoverage: '2019-09-01/..'
+    }
+  ]
+};
+---
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="keywords" content="karhutla, titik panas, hotspot indonesia, kebakaran hutan, lahan gambut, NASA FIRMS, VIIRS 375m, pemisahan PLTU smelter, sentinel api" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <link rel="canonical" href={canonicalUrl} />
+    <meta name="theme-color" content="#12130e" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:site_name" content="Sentinel Api · Transbulent" />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Peta pemantau titik panas karhutla dan gambut Indonesia dari satelit VIIRS" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script is:inline type="application/ld+json" set:html={JSON.stringify(structuredData)} />
+  </head>
+  <body>
+    <main id="map" aria-label="Peta titik panas Indonesia"></main>
+
+    <aside id="panel" data-open="true" aria-label="Panel kontrol dan kejadian titik panas">
+      <header class="brand">
+        <span class="dot" aria-hidden="true"></span>
+        <h1>Sentinel Api</h1>
+        <button id="panel-toggle" type="button" aria-expanded="true" aria-controls="panel-body" aria-label="Lipat atau buka panel">
+          <span class="ico-fold" aria-hidden="true">−</span>
+        </button>
+      </header>
+
+      <dl class="stats" aria-label="Ringkasan angka">
+        <div><dt>Titik Lahan</dt><dd id="stat-points">–</dd></div>
+        <div class="stat-ind"><dt>Industri · Non-Api</dt><dd id="stat-industrial">–</dd></div>
+        <div><dt>FRP Lahan (MW)</dt><dd id="stat-frp">–</dd></div>
+      </dl>
+
+      <div id="panel-body">
+        <div class="seg" role="group" aria-label="Mode tampilan">
+          <button type="button" data-mode="live" aria-pressed="true">Langsung</button>
+          <button type="button" data-mode="replay" aria-pressed="false">Replay · Kalteng 2019</button>
+        </div>
+
+        <section id="live-controls">
+          <div class="seg small" role="group" aria-label="Rentang waktu">
+            <button type="button" data-hours="24" aria-pressed="false">24 j</button>
+            <button type="button" data-hours="48" aria-pressed="true">48 j</button>
+            <button type="button" data-hours="72" aria-pressed="false">72 j</button>
+            <button type="button" data-hours="168" aria-pressed="false">7 h</button>
+          </div>
+          <p id="live-note" class="note" role="status"></p>
+        </section>
+
+        <section id="replay-controls" hidden>
+          <div class="replay-row">
+            <button id="replay-play" type="button">Putar</button>
+            <button id="replay-speed" type="button" title="Ubah kecepatan putar">1×</button>
+            <output id="replay-label" for="replay-slider"></output>
+          </div>
+          <svg id="replay-spark" viewBox="0 0 300 32" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <input id="replay-slider" type="range" min="0" max="28800" step="60" value="720" aria-label="Waktu replay" />
+          <p class="note">Pulang Pisau – Palangka Raya, 1–20 Sep 2019 · jendela aktif 48 j · VIIRS SNPP + NOAA-20.</p>
+        </section>
+
+        <p id="situation-summary" class="summary" role="status">Memuat ringkasan situasi…</p>
+
+        <div class="source-pills" role="group" aria-label="Filter jenis sumber termal di peta">
+          <button type="button" data-source="karhutla" aria-pressed="true"><i class="sw sw-fire"></i>Lahan</button>
+          <button type="button" data-source="industri" aria-pressed="true"><i class="sw sw-ind"></i>Industri · PLTU</button>
+          <button type="button" data-source="vulkanik" aria-pressed="true"><i class="sw sw-volc"></i>Vulkanik</button>
+        </div>
+
+        <div class="legend-bar" aria-label="Legenda warna umur deteksi dan simbol kategori">
+          <span class="leg-item"><i style="--c:#fff3b0"></i>&lt;3j</span>
+          <span class="leg-item"><i style="--c:#ffb000"></i>12j</span>
+          <span class="leg-item"><i style="--c:#ff5a1f"></i>24j</span>
+          <span class="leg-item"><i style="--c:#8c3b3b"></i>&gt;48j</span>
+          <span class="leg-item"><i class="ring" style="--c:#38bdf8"></i>Industri</span>
+          <span class="leg-item"><i class="ring" style="--c:#e879f9"></i>Kawah</span>
+        </div>
+
+        <div class="layers">
+          <label><input id="filter-conf" type="checkbox" checked /> Nominal+</label>
+          <label><input id="toggle-3d" type="checkbox" /> Medan 3D</label>
+          <label><input id="toggle-imagery" type="checkbox" /> Satelit</label>
+        </div>
+
+        <div class="list-tabs" role="tablist" aria-label="Daftar kejadian per kategori">
+          <button id="tab-karhutla" type="button" role="tab" data-list-tab="karhutla" aria-selected="true">Kejadian Lahan (0)</button>
+          <button id="tab-non-karhutla" type="button" role="tab" data-list-tab="non-karhutla" aria-selected="false">Industri &amp; Vulkanik (0)</button>
+        </div>
+        <p id="incident-empty" class="note" hidden>Tidak ada deteksi pada filter dan kategori ini.</p>
+        <ol id="incident-list"></ol>
+
+        <details class="about">
+          <summary>Tentang data &amp; pemisahan industri</summary>
+          <p>Titik panas dari satelit VIIRS (NOAA-20, NOAA-21, Suomi NPP) lewat NASA FIRMS, resolusi ±375 m. Deteksi di luar batas daratan/laut Indonesia (Malaysia, Singapura, Brunei, Timor-Leste) disaring otomatis.</p>
+          <p><strong>Pemisahan sumber:</strong> Katalog koordinat memisahkan PLTU, smelter, kilang/suar migas, tanur semen/pulp, kawasan industri berat, serta gunung api aktif PVMBG dari kebakaran hutan/lahan. Selain itu, sel berulang (&ge;4 lintasan, &ge;2 hari, &ge;60% malam, sebaran &le;1,8 km) di luar koridor gambut ditandai sebagai sumber termal tetap.</p>
+          <p>Lencana <code>GAMBUT</code> menandai klaster karhutla pada koridor hidrologis gambut utama.</p>
+        </details>
+      </div>
+    </aside>
+
+    <button id="panel-reopen" type="button" aria-label="Buka panel Sentinel Api" hidden>
+      <span class="dot" aria-hidden="true"></span>
+      <span>Panel</span>
+    </button>
+
+    <nav id="region-bar" aria-label="Fokus wilayah Indonesia">
+      <button type="button" data-region="nusantara" aria-pressed="true">Nusantara</button>
+      <button type="button" data-region="sumatera" aria-pressed="false">Sumatera</button>
+      <button type="button" data-region="kalimantan" aria-pressed="false">Kalimantan</button>
+      <button type="button" data-region="jawa_nusa" aria-pressed="false">Jawa · Nusa</button>
+      <button type="button" data-region="sulawesi" aria-pressed="false">Sulawesi</button>
+      <button type="button" data-region="maluku_papua" aria-pressed="false">Maluku · Papua</button>
+    </nav>
+
+    <style is:global>
+      @font-face {
+        font-family: "Schibsted Grotesk";
+        src: url("/fonts/SchibstedGrotesk-wght.woff2") format("woff2");
+        font-weight: 400 800;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      :root {
+        --bg: #12130e;
+        --panel: rgba(20, 21, 16, 0.93);
+        --line: #666958;
+        --line-soft: #2e3026;
+        --fg: #ece9dc;
+        --ash: #b0ae9f;
+        --amber: #ffb000;
+        --fire: #ff6d1f;
+        --peat: #d68a3c;
+        --ind: #38bdf8;
+        --volc: #e879f9;
+        --sans: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+        --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        color-scheme: dark;
+      }
+
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        font: 14px/1.45 var(--sans);
+        overflow: hidden;
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--amber);
+        outline-offset: 2px;
+      }
+
+      #map { position: fixed; inset: 0; }
+
+      #panel {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        width: 350px;
+        max-height: calc(100% - 24px);
+        display: flex;
+        flex-direction: column;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+        z-index: 3;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .brand h1 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        flex: 1;
+      }
+
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--fire);
+        box-shadow: 0 0 10px var(--fire);
+        flex: none;
+      }
+
+      #panel-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 36px;
+        min-height: 36px;
+        background: transparent;
+        border: 1px solid var(--line);
+        color: var(--fg);
+        border-radius: 6px;
+        font: 700 16px/1 var(--mono);
+        cursor: pointer;
+      }
+      #panel-toggle:hover { border-color: var(--amber); color: var(--amber); }
+
+      #panel-reopen {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 3;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 38px;
+        padding: 6px 12px;
+        background: var(--panel);
+        color: var(--fg);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        backdrop-filter: blur(8px);
+        font: 700 12px/1 var(--sans);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        cursor: pointer;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+      }
+      #panel-reopen:hover { border-color: var(--amber); }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+        margin: 10px 14px 8px;
+      }
+
+      .stats div {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 7px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .stats .stat-ind dd { color: var(--ind); }
+
+      .stats dt {
+        font-size: 9.5px;
+        color: var(--ash);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+      }
+
+      .stats dd {
+        margin: 2px 0 0;
+        font: 700 15px/1.15 var(--mono);
+        font-variant-numeric: tabular-nums;
+      }
+
+      #panel-body {
+        overflow-y: auto;
+        padding: 4px 14px 14px;
+      }
+
+      .seg { display: flex; gap: 6px; margin: 2px 0 8px; }
+
+      .seg button {
+        flex: 1;
+        min-height: 36px;
+        background: transparent;
+        color: var(--fg);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 8px;
+        font: 700 11.5px/1.2 var(--mono);
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+
+      .seg button[aria-pressed="true"] {
+        background: var(--amber);
+        color: #14120c;
+        border-color: var(--amber);
+      }
+
+      .seg.small button { min-height: 34px; padding: 4px; font-size: 11px; }
+
+      .note { color: var(--ash); font-size: 12px; margin: 4px 0 8px; }
+      .note.warn { color: #ffd080; }
+
+      .summary {
+        margin: 6px 0 8px;
+        padding: 7px 9px;
+        border-left: 2px solid var(--fire);
+        background: rgba(255, 109, 31, 0.08);
+        border-radius: 0 6px 6px 0;
+        font-size: 12px;
+        line-height: 1.35;
+        color: var(--fg);
+      }
+
+      .source-pills {
+        display: flex;
+        gap: 6px;
+        margin: 6px 0;
+      }
+
+      .source-pills button {
+        flex: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-height: 32px;
+        padding: 4px 7px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--fg);
+        font: 600 11.5px/1 var(--sans);
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      .source-pills button[aria-pressed="false"] {
+        opacity: 0.45;
+        border-color: var(--line-soft);
+      }
+
+      .sw { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+      .sw-fire { background: var(--fire); box-shadow: 0 0 6px var(--fire); }
+      .sw-ind { background: transparent; border: 2px solid var(--ind); width: 9px; height: 9px; }
+      .sw-volc { background: transparent; border: 2px solid var(--volc); width: 9px; height: 9px; }
+
+      .legend-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4px;
+        padding: 5px 8px;
+        margin: 6px 0 6px;
+        border: 1px solid var(--line-soft);
+        border-radius: 6px;
+        background: rgba(0, 0, 0, 0.22);
+        font: 10.5px/1.2 var(--mono);
+        color: var(--ash);
+      }
+
+      .leg-item { display: inline-flex; align-items: center; gap: 3px; }
+      .leg-item i {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--c);
+        display: inline-block;
+      }
+      .leg-item i.ring {
+        width: 8px;
+        height: 8px;
+        background: transparent;
+        border: 2px solid var(--c);
+      }
+
+      .replay-row { display: flex; align-items: center; gap: 6px; }
+      #replay-play {
+        min-height: 36px;
+        background: var(--amber);
+        color: #14120c;
+        border: 0;
+        border-radius: 6px;
+        padding: 6px 14px;
+        font: 700 12px/1 var(--mono);
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+      #replay-speed {
+        min-height: 36px;
+        background: transparent;
+        color: var(--fg);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 8px;
+        font: 700 11px/1 var(--mono);
+        cursor: pointer;
+      }
+      #replay-label { margin-left: auto; font: 600 12px/1.2 var(--mono); color: var(--fg); }
+      #replay-spark {
+        display: block;
+        width: 100%;
+        height: 32px;
+        margin-top: 8px;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--line-soft);
+        border-radius: 4px;
+      }
+      #replay-slider { width: 100%; accent-color: var(--fire); margin: 4px 0; cursor: pointer; }
+
+      .layers {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 14px;
+        font-size: 12.5px;
+        padding: 4px 0;
+      }
+      .layers label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; min-height: 30px; }
+      .layers input { width: 16px; height: 16px; accent-color: var(--amber); cursor: pointer; }
+
+      .list-tabs {
+        display: flex;
+        gap: 4px;
+        margin: 10px 0 4px;
+        border-bottom: 1px solid var(--line);
+      }
+      .list-tabs button {
+        flex: 1;
+        min-height: 34px;
+        background: transparent;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        color: var(--ash);
+        font: 700 11px/1.2 var(--sans);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding: 6px 4px;
+        cursor: pointer;
+      }
+      .list-tabs button[aria-selected="true"] {
+        color: var(--fg);
+        border-bottom-color: var(--amber);
+      }
+      .list-tabs button[data-list-tab="non-karhutla"][aria-selected="true"] {
+        border-bottom-color: var(--ind);
+      }
+
+      #incident-list { list-style: none; margin: 0; padding: 0; }
+      #incident-list button {
+        width: 100%;
+        text-align: left;
+        background: none;
+        border: 0;
+        border-bottom: 1px solid var(--line-soft);
+        color: var(--fg);
+        padding: 8px 4px;
+        cursor: pointer;
+        display: grid;
+        gap: 3px;
+      }
+      #incident-list button:hover { background: rgba(255, 176, 0, 0.06); }
+      .inc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .inc-top { font: 700 13px/1.25 var(--sans); color: var(--fg); }
+
+      .kind-badge {
+        font: 700 9.5px/1 var(--mono);
+        letter-spacing: 0.05em;
+        padding: 3px 5px;
+        border-radius: 4px;
+        text-transform: uppercase;
+        flex: none;
+      }
+      .kind-badge.peat { color: #14120c; background: var(--peat); }
+      .kind-badge.ind { color: #0b1820; background: var(--ind); }
+      .kind-badge.volc { color: #1d0924; background: var(--volc); }
+
+      .inc-meta { font: 11px/1.3 var(--mono); color: var(--ash); }
+      .inc-bar { height: 3px; width: var(--w); background: linear-gradient(90deg, var(--amber), var(--fire), #d92b2b); border-radius: 2px; }
+      .inc-bar.ind { background: linear-gradient(90deg, #0284c7, var(--ind)); }
+      .inc-bar.volc { background: linear-gradient(90deg, #a21caf, var(--volc)); }
+
+      .about { margin-top: 12px; font-size: 12px; color: var(--ash); }
+      .about summary { cursor: pointer; color: var(--fg); font-weight: 600; min-height: 32px; display: flex; align-items: center; }
+      .about code { font-family: var(--mono); color: var(--peat); }
+
+      #region-bar {
+        position: fixed;
+        top: 12px;
+        left: 374px;
+        right: 58px;
+        z-index: 2;
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 6px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        pointer-events: auto;
+      }
+      #region-bar::-webkit-scrollbar { display: none; }
+      #region-bar button {
+        flex: none;
+        min-height: 36px;
+        padding: 6px 11px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--fg);
+        backdrop-filter: blur(8px);
+        font: 600 12px/1 var(--sans);
+        cursor: pointer;
+        white-space: nowrap;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+      }
+      #region-bar button:hover { border-color: var(--amber); }
+      #region-bar button[aria-pressed="true"] {
+        background: var(--amber);
+        border-color: var(--amber);
+        color: #14120c;
+        font-weight: 700;
+      }
+
+      @media (min-width: 641px) {
+        #panel[data-open="false"] { display: none; }
+        #panel[data-open="false"] ~ #region-bar { left: 112px; }
+      }
+
+      .maplibregl-popup-content {
+        background: rgba(20, 21, 16, 0.96);
+        color: var(--fg);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 12px;
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+      }
+      .maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: rgba(20, 21, 16, 0.96); }
+      .maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: rgba(20, 21, 16, 0.96); }
+      .maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: rgba(20, 21, 16, 0.96); }
+      .maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: rgba(20, 21, 16, 0.96); }
+      .maplibregl-popup-close-button { color: var(--ash); font-size: 16px; padding: 2px 7px; }
+      .maplibregl-popup-close-button:hover { color: var(--amber); background: transparent; }
+
+      .pop { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; font-size: 12px; color: var(--fg); }
+      .pop dt { font-weight: 600; color: var(--ash); }
+      .pop dd { margin: 0; font-family: var(--mono); }
+
+      .maplibregl-ctrl-group {
+        background: var(--panel) !important;
+        border: 1px solid var(--line) !important;
+      }
+      .maplibregl-ctrl-group button + button { border-top: 1px solid var(--line-soft) !important; }
+      .maplibregl-ctrl-icon { filter: invert(0.9) sepia(0.08); }
+      .maplibregl-ctrl-attrib {
+        background: rgba(20, 21, 16, 0.86) !important;
+        color: var(--ash) !important;
+        border: 1px solid var(--line-soft);
+      }
+      .maplibregl-ctrl-attrib a { color: var(--fg) !important; }
+      .maplibregl-ctrl-attrib-button { filter: invert(0.9); }
+      .maplibregl-ctrl-scale {
+        background: rgba(20, 21, 16, 0.86) !important;
+        color: var(--fg) !important;
+        border-color: var(--line) !important;
+      }
+
+      @media (max-width: 640px) {
+        #region-bar { top: 8px; left: 8px; right: 52px; }
+        #region-bar button { min-height: 38px; padding: 6px 10px; font-size: 12px; }
+
+        #panel {
+          left: 8px;
+          right: 8px;
+          top: auto;
+          bottom: 8px;
+          width: auto;
+          max-height: 60%;
+        }
+        #panel-toggle { min-width: 40px; min-height: 40px; }
+        .brand { padding: 6px 10px; }
+        .stats { margin: 6px 10px 8px; }
+        .stats div { padding: 4px 6px; }
+        .stats dd { font-size: 14px; }
+        .seg button { min-height: 40px; }
+        .seg.small button { min-height: 38px; }
+        .source-pills button { min-height: 36px; }
+        .list-tabs button { min-height: 38px; }
+        #panel[data-open="false"] #panel-body { display: none; }
+        #panel-reopen { display: none !important; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          transition-duration: 0.01ms !important;
+          animation-duration: 0.01ms !important;
+        }
+      }
+    </style>
+
+    <script>
+      import '../scripts/fire.js';
+    </script>
+    <noscript>
+      <section style="position:fixed;inset:0;z-index:99;background:#12130e;color:#ece9dc;padding:32px;font-family:system-ui,sans-serif;overflow:auto">
+        <h1>Sentinel Api · Wildfire Watch Indonesia</h1>
+        <p>Pemantau titik panas (hotspot) satelit NASA FIRMS VIIRS 375 m real-time untuk seluruh Indonesia. Memisahkan kebakaran hutan dan lahan gambut (karhutla) dari PLTU, smelter, suar migas, dan gunung api aktif.</p>
+        <p>Aktifkan JavaScript untuk melihat peta interaktif 3D MapLibre GL dan replay karhutla Kalimantan Tengah September 2019. Kode sumber terbuka tersedia di <a style="color:#ffb000" href="https://github.com/gisrad/wildfire-watch">github.com/gisrad/wildfire-watch</a>.</p>
+      </section>
+    </noscript>
+  </body>
+</html>

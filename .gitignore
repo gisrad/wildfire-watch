@@ -1,0 +1,17 @@
+# Dependencies & build output
+node_modules/
+dist/
+.astro/
+.wrangler/
+
+# Secrets & environment config (never commit live credentials or Cloudflare IDs)
+.env
+.env.*
+.dev.vars
+wrangler.toml
+!wrangler.toml.example
+
+# OS & logs
+*.log
+.DS_Store
+Thumbs.db
