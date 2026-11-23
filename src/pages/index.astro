@@ -1,6 +1,8 @@
 ---
-const title = 'Sentinel Api · Peta Titik Panas Karhutla Indonesia Real-Time';
-const description = 'Peta titik panas (hotspot) satelit NASA FIRMS VIIRS 375 m real-time untuk seluruh Indonesia. Memisahkan kebakaran hutan & lahan gambut (karhutla) dari PLTU, smelter, suar migas, dan gunung api aktif.';
+import '../lib/sentinel-status.css';
+
+const title = 'Sentinel Api · Peta Titik Panas Satelit Indonesia';
+const description = 'Peta deteksi panas satelit NASA FIRMS VIIRS untuk Indonesia. Titik panas bukan konfirmasi kebakaran; dugaan sumber tetap dan kawasan sekitar kawah ditandai terpisah.';
 const canonicalUrl = 'https://fire.transbulent.id/';
 const ogImage = 'https://fire.transbulent.id/og-fire.png';
 const structuredData = {
@@ -36,7 +38,7 @@ const structuredData = {
     {
       '@type': 'Dataset',
       name: 'Indonesia VIIRS 375m Active Fire & Stationary Industrial Thermal Classification (Live & 2019 Central Kalimantan Peat Megafire Replay)',
-      description: 'Real-time and historical 375 m Suomi NPP, NOAA-20, and NOAA-21 VIIRS active fire detections filtered for Indonesian territory and classified into vegetation/peatland wildfires versus stationary coal power plants, smelters, oil-and-gas flares, and active volcanoes.',
+      description: 'Deteksi panas VIIRS NOAA-20 dan NOAA-21 untuk pemantauan terkini, dengan arsip historis yang dapat mencakup Suomi NPP. Klasifikasi sumber bersifat indikatif.',
       url: canonicalUrl,
       sameAs: 'https://github.com/gisrad/wildfire-watch',
       isAccessibleForFree: true,
@@ -110,10 +112,16 @@ const structuredData = {
       </header>
 
       <dl class="stats" aria-label="Ringkasan angka">
-        <div><dt>Titik Lahan</dt><dd id="stat-points">–</dd></div>
-        <div class="stat-ind"><dt>Industri · Non-Api</dt><dd id="stat-industrial">–</dd></div>
-        <div><dt>FRP Lahan (MW)</dt><dd id="stat-frp">–</dd></div>
+        <div><dt>Deteksi tampil</dt><dd id="stat-points">–</dd></div>
+        <div class="stat-ind"><dt>Dugaan sumber tetap</dt><dd id="stat-industrial">–</dd></div>
+        <div><dt>Klaster lahan</dt><dd id="stat-clusters">–</dd></div>
       </dl>
+      <div class="sentinel-status">
+        <p id="live-note" class="note" role="status">Memuat data 48 jam…</p>
+        <button id="retry-live" type="button" hidden>Coba lagi</button>
+        <p id="map-note" class="note" role="status" hidden>Peta belum tersedia. Gunakan daftar untuk melihat detail.</p>
+        <span>Titik panas bukan konfirmasi kebakaran. <a href="https://firms.modaps.eosdis.nasa.gov/map/">Peta NASA FIRMS</a></span>
+      </div>
 
       <div id="panel-body">
         <div class="seg" role="group" aria-label="Mode tampilan">
@@ -128,7 +136,6 @@ const structuredData = {
             <button type="button" data-hours="72" aria-pressed="false">72 j</button>
             <button type="button" data-hours="168" aria-pressed="false">7 h</button>
           </div>
-          <p id="live-note" class="note" role="status"></p>
         </section>
 
         <section id="replay-controls" hidden>
@@ -145,9 +152,9 @@ const structuredData = {
         <p id="situation-summary" class="summary" role="status">Memuat ringkasan situasi…</p>
 
         <div class="source-pills" role="group" aria-label="Filter jenis sumber termal di peta">
-          <button type="button" data-source="karhutla" aria-pressed="true"><i class="sw sw-fire"></i>Lahan</button>
-          <button type="button" data-source="industri" aria-pressed="true"><i class="sw sw-ind"></i>Industri · PLTU</button>
-          <button type="button" data-source="vulkanik" aria-pressed="true"><i class="sw sw-volc"></i>Vulkanik</button>
+          <button type="button" data-source="karhutla" data-map-control disabled aria-pressed="true"><i class="sw sw-fire"></i>Titik lahan</button>
+          <button type="button" data-source="industri" data-map-control disabled aria-pressed="true"><i class="sw sw-ind"></i>Dugaan sumber tetap</button>
+          <button type="button" data-source="vulkanik" data-map-control disabled aria-pressed="true"><i class="sw sw-volc"></i>Dekat kawah</button>
         </div>
 
         <div class="legend-bar" aria-label="Legenda warna umur deteksi dan simbol kategori">
@@ -155,31 +162,37 @@ const structuredData = {
           <span class="leg-item"><i style="--c:#ffb000"></i>12j</span>
           <span class="leg-item"><i style="--c:#ff5a1f"></i>24j</span>
           <span class="leg-item"><i style="--c:#8c3b3b"></i>&gt;48j</span>
-          <span class="leg-item"><i class="ring" style="--c:#38bdf8"></i>Industri</span>
-          <span class="leg-item"><i class="ring" style="--c:#e879f9"></i>Kawah</span>
+          <span class="leg-item"><i class="ring" style="--c:#38bdf8"></i>Sumber tetap?</span>
+          <span class="leg-item"><i class="ring" style="--c:#e879f9"></i>Dekat kawah</span>
         </div>
 
         <div class="layers">
           <label><input id="filter-conf" type="checkbox" checked /> Nominal+</label>
-          <label><input id="toggle-3d" type="checkbox" /> Medan 3D</label>
-          <label><input id="toggle-imagery" type="checkbox" /> Satelit</label>
+          <label><input id="toggle-3d" type="checkbox" data-map-control disabled /> Medan 3D</label>
+          <label><input id="toggle-imagery" type="checkbox" data-map-control disabled /> Satelit</label>
         </div>
 
-        <div class="list-tabs" role="tablist" aria-label="Daftar kejadian per kategori">
-          <button id="tab-karhutla" type="button" role="tab" data-list-tab="karhutla" aria-selected="true">Kejadian Lahan (0)</button>
-          <button id="tab-non-karhutla" type="button" role="tab" data-list-tab="non-karhutla" aria-selected="false">Industri &amp; Vulkanik (0)</button>
+        <div class="list-tabs" role="group" aria-label="Kategori daftar deteksi">
+          <button id="tab-karhutla" type="button" data-list-tab="karhutla" aria-pressed="true">Klaster lahan</button>
+          <button id="tab-non-karhutla" type="button" data-list-tab="non-karhutla" aria-pressed="false">Dugaan sumber tetap</button>
         </div>
         <p id="incident-empty" class="note" hidden>Tidak ada deteksi pada filter dan kategori ini.</p>
         <ol id="incident-list"></ol>
 
         <details class="about">
           <summary>Tentang data &amp; pemisahan industri</summary>
-          <p>Titik panas dari satelit VIIRS (NOAA-20, NOAA-21, Suomi NPP) lewat NASA FIRMS, resolusi ±375 m. Deteksi di luar batas daratan/laut Indonesia (Malaysia, Singapura, Brunei, Timor-Leste) disaring otomatis.</p>
-          <p><strong>Pemisahan sumber:</strong> Katalog koordinat memisahkan PLTU, smelter, kilang/suar migas, tanur semen/pulp, kawasan industri berat, serta gunung api aktif PVMBG dari kebakaran hutan/lahan. Selain itu, sel berulang (&ge;4 lintasan, &ge;2 hari, &ge;60% malam, sebaran &le;1,8 km) di luar koridor gambut ditandai sebagai sumber termal tetap.</p>
-          <p>Lencana <code>GAMBUT</code> menandai klaster karhutla pada koridor hidrologis gambut utama.</p>
+          <p>Data terbaru berasal dari NOAA-20 dan NOAA-21 (VIIRS ±375 m). Suomi NPP hanya muncul di arsip. Satelit tidak memantau setiap lokasi setiap saat. Awan dan jadwal lintasan membatasi deteksi dan kelengkapan rentang yang ditampilkan.</p>
+          <p>Jarak ke fasilitas, kawah, dan pola deteksi berulang hanya memberi dugaan sumber. Deteksi yang tidak terkategori belum tentu kebakaran. Klaster adalah kelompok titik berdekatan, bukan jumlah kebakaran terkonfirmasi.</p>
+          <p>Lencana zona gambut dan nama wilayah adalah perkiraan. FRP menunjukkan daya radiasi per deteksi, bukan luas kebakaran atau akumulasi lintas waktu.</p>
         </details>
       </div>
     </aside>
+
+    <dialog id="event-detail" aria-labelledby="detail-heading">
+      <h2 id="detail-heading">Detail klaster deteksi</h2>
+      <div data-detail></div>
+      <form method="dialog"><button type="submit">Tutup</button></form>
+    </dialog>
 
     <button id="panel-reopen" type="button" aria-label="Buka panel Sentinel Api" hidden>
       <span class="dot" aria-hidden="true"></span>
@@ -187,12 +200,12 @@ const structuredData = {
     </button>
 
     <nav id="region-bar" aria-label="Fokus wilayah Indonesia">
-      <button type="button" data-region="nusantara" aria-pressed="true">Nusantara</button>
-      <button type="button" data-region="sumatera" aria-pressed="false">Sumatera</button>
-      <button type="button" data-region="kalimantan" aria-pressed="false">Kalimantan</button>
-      <button type="button" data-region="jawa_nusa" aria-pressed="false">Jawa · Nusa</button>
-      <button type="button" data-region="sulawesi" aria-pressed="false">Sulawesi</button>
-      <button type="button" data-region="maluku_papua" aria-pressed="false">Maluku · Papua</button>
+      <button type="button" data-region="nusantara" data-map-control disabled aria-pressed="true">Nusantara</button>
+      <button type="button" data-region="sumatera" data-map-control disabled aria-pressed="false">Sumatera</button>
+      <button type="button" data-region="kalimantan" data-map-control disabled aria-pressed="false">Kalimantan</button>
+      <button type="button" data-region="jawa_nusa" data-map-control disabled aria-pressed="false">Jawa · Nusa</button>
+      <button type="button" data-region="sulawesi" data-map-control disabled aria-pressed="false">Sulawesi</button>
+      <button type="button" data-region="maluku_papua" data-map-control disabled aria-pressed="false">Maluku · Papua</button>
     </nav>
 
     <style is:global>
@@ -517,7 +530,7 @@ const structuredData = {
         padding: 6px 4px;
         cursor: pointer;
       }
-      .list-tabs button[aria-selected="true"] {
+      .list-tabs button[aria-pressed="true"] {
         color: var(--fg);
         border-bottom-color: var(--amber);
       }
@@ -681,7 +694,7 @@ const structuredData = {
     <noscript>
       <section style="position:fixed;inset:0;z-index:99;background:#12130e;color:#ece9dc;padding:32px;font-family:system-ui,sans-serif;overflow:auto">
         <h1>Sentinel Api · Wildfire Watch Indonesia</h1>
-        <p>Pemantau titik panas (hotspot) satelit NASA FIRMS VIIRS 375 m real-time untuk seluruh Indonesia. Memisahkan kebakaran hutan dan lahan gambut (karhutla) dari PLTU, smelter, suar migas, dan gunung api aktif.</p>
+        <p>Peta deteksi panas satelit NASA FIRMS VIIRS. Titik panas bukan konfirmasi kebakaran. <a href="https://firms.modaps.eosdis.nasa.gov/map/">Lihat peta NASA FIRMS</a>.</p>
         <p>Aktifkan JavaScript untuk melihat peta interaktif 3D MapLibre GL dan replay karhutla Kalimantan Tengah September 2019. Kode sumber terbuka tersedia di <a style="color:#ffb000" href="https://github.com/gisrad/wildfire-watch">github.com/gisrad/wildfire-watch</a>.</p>
       </section>
     </noscript>

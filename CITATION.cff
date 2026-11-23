@@ -6,13 +6,13 @@ authors:
   - family-names: "Fajrianshah"
     given-names: "Evans Azka"
     affiliation: "National Research and Innovation Agency (BRIN); Graduate School, Universitas Gadjah Mada"
-version: 1.0.0
-date-released: "2026-11-21"
+version: 1.1.0
+date-released: "2026-11-24"
 license: MIT
 url: "https://fire.transbulent.id"
 repository-code: "https://github.com/gisrad/wildfire-watch"
 abstract: >-
-  Real-time webGIS platform and edge ingestion pipeline for monitoring NASA FIRMS VIIRS 375 m active fire detections across the Indonesian archipelago. Implements a two-tier stationary thermal filter separating vegetation and peatland wildfires (karhutla) from coal-fired power plants (PLTU), metallurgical smelters, upstream oil and gas flares, cement/pulp kilns, and active volcanoes while preserving peatland hydrological corridor alerts.
+  Real-time webGIS platform and edge ingestion pipeline for monitoring NASA FIRMS VIIRS 375 m (NOAA-20 and NOAA-21) active fire detections across the Indonesian archipelago. Implements a two-tier stationary thermal filter that flags suspected coal-fired power plants (PLTU), metallurgical smelters, upstream oil and gas flares, cement/pulp kilns, and active volcano craters, separately from candidate vegetation and peatland wildfires (karhutla), while preserving peatland hydrological corridor alerts. Source categories are suspicions, not confirmed attribution.
 keywords:
   - wildfire
   - karhutla

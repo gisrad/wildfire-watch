@@ -1,0 +1,31 @@
+.sentinel-status {
+  padding: 0 12px 9px;
+  font-size: 13px;
+  line-height: 1.32;
+}
+.sentinel-status .note { margin: 0 0 4px; }
+.sentinel-status button {
+  min-height: 34px;
+  margin: 0 8px 4px 0;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.sentinel-status a { color: var(--fg); text-underline-offset: .18em; }
+[data-map-control]:disabled { opacity: .52; cursor: default; }
+#event-detail {
+  width: min(440px, calc(100vw - 28px));
+  max-height: calc(100vh - 28px);
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  overflow: auto;
+}
+#event-detail::backdrop { background: rgb(0 0 0 / 68%); }
+#event-detail h2 { font-size: 16px; margin: 0 0 12px; }
+#event-detail form { margin: 16px 0 0; }
+#event-detail button { min-height: 40px; padding: 4px 14px; font: inherit; cursor: pointer; }

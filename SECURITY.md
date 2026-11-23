@@ -4,7 +4,8 @@
 
 - **Server-side API key isolation**: `FIRMS_MAP_KEY` is stored solely as an encrypted Cloudflare Worker secret (`wrangler secret put FIRMS_MAP_KEY`) or environment variable (`process.env.FIRMS_MAP_KEY` when running `scripts/bake-replay.mjs`). It is never bundled into static client assets or returned in HTTP responses.
 - **SQLite parameterization**: All queries to Cloudflare D1 (`worker/index.js`) use prepared parameter bindings (`.bind(...)`).
-- **HTTP security headers**: Static assets and JSON endpoints enforce `Content-Security-Policy`, `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy`.
+- **Read-only public API and scheduled ingest**: `GET`/`HEAD` requests to `/api/hotspots` and `/api/status` never call NASA FIRMS, never write to D1, and never claim the ingest lease, and legacy refresh parameters cannot trigger ingestion. Only the Cloudflare cron `scheduled` handler ingests, guarded by a D1 lease (`meta.scheduled_ingest_lease`) with an expiry and a random owner token. Public status output exposes only known fields and codes, not raw upstream error text. The cron trigger in `wrangler.toml` is required for any data to be ingested.
+- **HTTP security headers**: Static assets and JSON endpoints enforce `Content-Security-Policy`, `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy` (`geolocation=()`, `camera=()`, `microphone=()`); the app does not request the user's location.
 - **Environment hygiene**: `wrangler.toml` and `.dev.vars` are excluded via `.gitignore`; only the sanitized `wrangler.toml.example` template is tracked. Automated checks (`npm run check:security`) fail on leaked UUIDs, tokens, email addresses, or local paths.
 
 ## Supported Versions

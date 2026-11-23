@@ -1,5 +1,5 @@
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import { createLiveFeed, describeLive, showSentinelDetail } from '../lib/sentinel-live.js';
+import { startSentinelMap } from '../lib/sentinel-map.js';
 import {
   REGIONS,
   MOBILE_INITIAL_BOUNDS,
@@ -62,17 +62,8 @@ function getMapPadding() {
   return { top: 60, right: 28, bottom: 28, left: leftInset };
 }
 
-const map = new maplibregl.Map({
-  container: 'map',
-  style: STYLE,
-  bounds: isMobile() ? MOBILE_INITIAL_BOUNDS : REGIONS[0].bounds,
-  fitBoundsOptions: { padding: getMapPadding(), maxZoom: 6 },
-  maxBounds: INDONESIA_MAX_BOUNDS,
-  maxPitch: 80,
-  attributionControl: { compact: true, customAttribution: 'Hotspot: NASA FIRMS · DEM: AWS Terrain Tiles' }
-});
-map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
-map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
+let map;
+let maplibregl;
 
 const state = {
   mode: 'live',
@@ -85,12 +76,27 @@ const state = {
   playing: false,
   timer: null,
   lastListRender: 0,
-  liveAbort: null,
   replayToken: 0,
   activeRegion: 'nusantara',
   activeListTab: 'karhutla',
   showSources: { karhutla: true, industri: true, vulkanik: true }
 };
+
+const liveFeed = createLiveFeed({
+  endpoint: '/api/hotspots',
+  recordsKey: 'points',
+  onView(view) {
+    const changed = state.live !== view.data || state.livePhase !== view.phase;
+    state.live = view.data;
+    const latest = view.data?.points.at(-1)?.[3];
+    const note = $('live-note');
+    note.classList.toggle('warn', ['partial', 'stale', 'unavailable'].includes(view.phase));
+    note.textContent = describeLive(view, wib, latest ? `Pengamatan terakhir ${wib(latest)}` : '');
+    state.livePhase = view.phase;
+    $('retry-live').hidden = view.phase !== 'unavailable';
+    if (changed) render(true);
+  }
+});
 
 // ---------- data -> GeoJSON ----------
 function fc(features) {
@@ -177,7 +183,7 @@ function replayPoints() {
 }
 
 function summarizeGroup(fs, forcedSite = null) {
-  let sx = 0, sy = 0, frpMax = 0, frpSum = 0, first = Infinity, last = 0;
+  let sx = 0, sy = 0, frpMax = 0, first = Infinity, last = 0;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   let peatAny = false;
   for (const f of fs) {
@@ -189,7 +195,6 @@ function summarizeGroup(fs, forcedSite = null) {
     minY = Math.min(minY, y);
     maxY = Math.max(maxY, y);
     frpMax = Math.max(frpMax, f.properties.frp);
-    frpSum += f.properties.frp;
     first = Math.min(first, f.properties.ts);
     last = Math.max(last, f.properties.ts);
     if (f.properties.peat) peatAny = true;
@@ -203,13 +208,13 @@ function summarizeGroup(fs, forcedSite = null) {
     lon,
     lat,
     frpMax,
-    frpSum,
     first,
     last,
     bbox: [minX, minY, maxX, maxY],
     loc,
     kind: forcedSite ? sample.kind : 'karhutla',
-    subType: forcedSite ? sample.subType : sample.subType,
+    subType: sample.subType,
+    basis: sample.basis,
     siteName: forcedSite ? sample.siteName : null,
     peat: !forcedSite && (peatAny || isPeatCorridor(lat, lon))
   };
@@ -268,71 +273,61 @@ function groupIncidents(features) {
 
   const karhutla = [...karhutlaClusters.values()]
     .map((fs) => summarizeGroup(fs, false))
-    .sort((a, b) => b.frpSum - a.frpSum);
+    .sort((a, b) => b.n - a.n || b.last - a.last);
 
   const nonKarhutla = [...siteGroups.values()]
     .map((fs) => summarizeGroup(fs, true))
-    .sort((a, b) => b.frpSum - a.frpSum);
+    .sort((a, b) => b.n - a.n || b.last - a.last);
 
   return { karhutla, nonKarhutla, karhutlaPoints: karhutlaFeatures };
 }
 
 // ---------- ringkasan & render ----------
-function updateSummary(karhutlaInc, nonKarhutlaInc, totalKarhutlaFrp, nonKarhutlaCount, hiddenLow, totalRaw) {
+function updateSummary(karhutlaInc, nonKarhutlaCount, hiddenLow, totalRaw) {
   const el = $('situation-summary');
-  if (karhutlaInc.length === 0 && nonKarhutlaInc.length === 0) {
-    el.textContent =
-      hiddenLow > 0 && totalRaw > 0
-        ? `Semua ${fmtNum.format(totalRaw)} deteksi berkeyakinan rendah — matikan filter Nominal+ untuk melihat.`
-        : 'Tidak ada deteksi aktif pada rentang waktu yang dipilih.';
+  if (totalRaw === 0) {
+    el.textContent = state.mode === 'live' && state.livePhase !== 'empty'
+      ? 'Belum ada deteksi pada data yang tersedia; cakupan bisa tidak lengkap.'
+      : 'Tidak ada deteksi dalam rentang ini. Ini bukan bukti tidak ada kebakaran.';
     return;
   }
-  if (karhutlaInc.length === 0) {
-    el.textContent = `Nol titik lahan terdeteksi; ${fmtNum.format(nonKarhutlaCount)} sinyal terklasifikasi sebagai industri/PLTU atau vulkanik.`;
-    return;
-  }
-  const byProv = new Map();
-  let peatCount = 0;
-  for (const i of karhutlaInc) {
-    if (i.peat) peatCount += 1;
-    byProv.set(i.loc.province, (byProv.get(i.loc.province) || 0) + i.frpSum);
-  }
-  const [topProv, topFrp] = [...byProv.entries()].sort((a, b) => b[1] - a[1])[0];
-  const pct = totalKarhutlaFrp > 0 ? Math.round((topFrp / totalKarhutlaFrp) * 100) : 0;
-  const parts = [`Lahan tertinggi di ${topProv} (${pct}% FRP)`];
-  if (peatCount > 0) parts.push(`${peatCount} klaster gambut`);
-  if (nonKarhutlaCount > 0) parts.push(`${fmtNum.format(nonKarhutlaCount)} titik industri/kawah dipisahkan`);
-  if (hiddenLow > 0) parts.push(`${fmtNum.format(hiddenLow)} rendah disaring`);
+  const parts = [`${fmtNum.format(karhutlaInc.length)} klaster deteksi lahan`];
+  if (nonKarhutlaCount > 0) parts.push(`${fmtNum.format(nonKarhutlaCount)} deteksi dekat fasilitas, kawah, atau sumber panas tetap`);
+  if (hiddenLow > 0) parts.push(`${fmtNum.format(hiddenLow)} deteksi berkeyakinan rendah disembunyikan`);
   el.textContent = `${parts.join(' · ')}.`;
 }
 
 function render(forceList = true) {
-  const src = map.getSource('hotspots');
-  if (!src) return;
+  const available = state.mode === 'live' ? state.live : state.replay;
+  const src = map?.getSource('hotspots');
   let pack = { features: [], hiddenLow: 0, totalRaw: 0 };
   if (state.mode === 'live' && state.live) pack = livePoints();
   if (state.mode === 'replay' && state.replay) pack = replayPoints();
 
   const { features, hiddenLow, totalRaw } = pack;
-  src.setData(fc(features));
+  if (src) src.setData(fc(features));
 
   const { karhutla, nonKarhutla, karhutlaPoints } = groupIncidents(features);
   const nonKarhutlaCount = features.length - karhutlaPoints.length;
-  const karhutlaFrp = karhutlaPoints.reduce((s, f) => s + f.properties.frp, 0);
 
-  $('stat-points').textContent = fmtNum.format(karhutlaPoints.length);
-  $('stat-industrial').textContent = fmtNum.format(nonKarhutlaCount);
-  $('stat-frp').textContent = fmtNum.format(Math.round(karhutlaFrp));
-  $('tab-karhutla').textContent = `Kejadian Lahan (${fmtNum.format(karhutla.length)})`;
-  $('tab-non-karhutla').textContent = `Industri & Vulkanik (${fmtNum.format(nonKarhutla.length)})`;
+  const known = available && (totalRaw > 0 || state.mode === 'replay' || state.livePhase === 'empty');
+  $('stat-points').textContent = known ? fmtNum.format(features.length) : '–';
+  $('stat-industrial').textContent = known ? fmtNum.format(nonKarhutlaCount) : '–';
+  $('stat-clusters').textContent = known ? fmtNum.format(karhutla.length) : '–';
+  $('tab-karhutla').textContent = known ? `Klaster lahan (${fmtNum.format(karhutla.length)})` : 'Klaster lahan';
+  $('tab-non-karhutla').textContent = known ? `Dugaan sumber tetap (${fmtNum.format(nonKarhutla.length)})` : 'Dugaan sumber tetap';
 
-  updateSummary(karhutla, nonKarhutla, karhutlaFrp, nonKarhutlaCount, hiddenLow, totalRaw);
+  if (available) updateSummary(karhutla, nonKarhutlaCount, hiddenLow, totalRaw);
+  else $('situation-summary').textContent = state.mode === 'live' && state.livePhase === 'unavailable'
+    ? 'Data titik panas belum tersedia.'
+    : '';
 
   const nowMs = performance.now();
   if (forceList || !state.playing || nowMs - state.lastListRender >= 600) {
     state.lastListRender = nowMs;
     const activeItems = state.activeListTab === 'non-karhutla' ? nonKarhutla : karhutla;
     renderList(activeItems, state.activeListTab === 'non-karhutla');
+    if (!known) $('incident-empty').hidden = true;
   }
 }
 
@@ -354,12 +349,12 @@ function renderList(items, isNonWildfire) {
     if (isNonWildfire) {
       const badge = document.createElement('span');
       badge.className = `kind-badge ${i.kind === 'vulkanik' ? 'volc' : 'ind'}`;
-      badge.textContent = i.subType || (i.kind === 'vulkanik' ? 'GUNUNG API' : 'INDUSTRI');
+      badge.textContent = i.basis === 'katalog' ? 'Dekat fasilitas/kawah' : 'Dugaan sumber tetap';
       head.append(badge);
     } else if (i.peat) {
       const badge = document.createElement('span');
       badge.className = 'kind-badge peat';
-      badge.textContent = 'GAMBUT';
+      badge.textContent = 'Zona gambut';
       head.append(badge);
     }
 
@@ -370,10 +365,21 @@ function renderList(items, isNonWildfire) {
 
     const bar = document.createElement('span');
     bar.className = `inc-bar${isNonWildfire ? (i.kind === 'vulkanik' ? ' volc' : ' ind') : ''}`;
-    bar.style.setProperty('--w', `${Math.min(100, Math.max(6, Math.sqrt(i.frpSum) * 2.5))}%`);
+    bar.style.setProperty('--w', `${Math.min(100, Math.max(6, Math.sqrt(i.n) * 10))}%`);
 
     b.append(head, meta, bar);
     b.addEventListener('click', () => {
+      if (!map) {
+        showSentinelDetail(detailList([
+          ['Wilayah perkiraan', i.loc.province],
+          ['Deteksi', fmtNum.format(i.n)],
+          ['Pengamatan terakhir', formatZoneTime(i.last, i.loc.tz)],
+          ['FRP maksimum per deteksi', `${i.frpMax.toFixed(1)} MW`],
+          ['Koordinat klaster', `${i.lat.toFixed(4)}, ${i.lon.toFixed(4)}`],
+          ...(isNonWildfire ? [['Dugaan sumber', i.siteName || i.subType]] : [])
+        ]));
+        return;
+      }
       const [a, c, d, e] = i.bbox;
       map.fitBounds(
         [[a - 0.04, c - 0.04], [d + 0.04, e + 0.04]],
@@ -387,38 +393,22 @@ function renderList(items, isNonWildfire) {
 }
 
 // ---------- live ----------
-async function loadLive() {
-  if (state.liveAbort) state.liveAbort.abort();
-  state.liveAbort = new AbortController();
-  const { signal } = state.liveAbort;
-
-  const note = $('live-note');
-  note.className = 'note';
-  note.textContent = 'Memuat data satelit…';
-  try {
-    const res = await fetch(`/api/hotspots?hours=${state.hours}`, { signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const payload = await res.json();
-    if (state.mode !== 'live') return;
-    state.live = payload;
-    const li = payload.last_ingest;
-    const la = payload.last_attempt;
-    if (la && !la.ok && li) {
-      note.className = 'note warn';
-      note.textContent = `Tarik FIRMS ${wib(la.at)} sempat gagal; tampilkan data ${wib(li.at)}.`;
-    } else if (li) {
-      note.textContent = `Diperbarui ${wib(li.at)}`;
-    } else {
-      note.textContent = 'Data awal sedang diambil; muat ulang sebentar lagi.';
-    }
-  } catch (err) {
-    if (err.name === 'AbortError' || state.mode !== 'live') return;
-    note.className = 'note warn';
-    note.textContent = `Gagal memuat hotspot (${err.message}).`;
-    state.live = { points: [], persistent_cells: [] };
+function detailList(rows) {
+  const el = document.createElement('dl');
+  el.className = 'pop';
+  for (const [label, value] of rows) {
+    const dt = document.createElement('dt');
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    el.append(dt, dd);
   }
-  render(true);
+  return el;
 }
+
+setInterval(() => {
+  if (state.mode === 'live' && !document.hidden) liveFeed.load(state.hours, { background: true });
+}, 5 * 60_000);
 
 // ---------- replay ----------
 function drawReplaySparkline(r) {
@@ -470,7 +460,7 @@ async function loadReplay() {
       state.t = Math.min(REPLAY_INITIAL_MIN, Number(slider.max));
       drawReplaySparkline(data);
     } catch (err) {
-      if (state.mode !== 'replay') return;
+      if (state.mode !== 'replay' || token !== state.replayToken) return;
       $('replay-label').textContent = `Gagal memuat arsip (${err.message})`;
       return;
     }
@@ -478,7 +468,7 @@ async function loadReplay() {
   if (state.mode !== 'replay' || token !== state.replayToken) return;
   updateReplay(true);
   const [a, b, c, d] = state.replay.bbox;
-  map.fitBounds([[a, b], [c, d]], {
+  map?.fitBounds([[a, b], [c, d]], {
     padding: getMapPadding(),
     duration: reducedMotion() ? 0 : 950
   });
@@ -486,6 +476,7 @@ async function loadReplay() {
 
 function updateReplay(forceList = true) {
   const r = state.replay;
+  if (!r) return;
   const max = Number($('replay-slider').max) || 28800;
   $('replay-slider').value = String(state.t);
   $('replay-label').textContent = wib(r.t0 + state.t * 60);
@@ -499,6 +490,7 @@ function updateReplay(forceList = true) {
 }
 
 function togglePlay(force) {
+  if (!state.replay && force !== false) return;
   state.playing = force ?? !state.playing;
   $('replay-play').textContent = state.playing ? 'Jeda' : 'Putar';
   clearInterval(state.timer);
@@ -519,12 +511,13 @@ function togglePlay(force) {
 function setListTab(tab) {
   state.activeListTab = tab;
   for (const b of document.querySelectorAll('[data-list-tab]')) {
-    b.setAttribute('aria-selected', String(b.dataset.listTab === tab));
+    b.setAttribute('aria-pressed', String(b.dataset.listTab === tab));
   }
   render(true);
 }
 
 function syncSourceVisibility() {
+  if (!map) return;
   const groups = {
     karhutla: ['hotspots-heat', 'hotspots-glow', 'hotspots'],
     industri: ['hotspots-ind-glow', 'hotspots-ind'],
@@ -549,7 +542,7 @@ function focusRegion(regionId, animate = true) {
   const region = REGIONS.find((r) => r.id === regionId) || REGIONS[0];
   setRegionPressed(region.id);
   const targetBounds = region.id === 'nusantara' && isMobile() ? MOBILE_INITIAL_BOUNDS : region.bounds;
-  map.fitBounds(targetBounds, {
+  map?.fitBounds(targetBounds, {
     padding: getMapPadding(),
     duration: animate && !reducedMotion() ? 850 : 0,
     maxZoom: 8.5
@@ -567,14 +560,20 @@ function setMode(mode, shouldRefocus = true) {
   $('filter-conf').disabled = mode === 'replay';
   if (mode === 'replay') setListTab('karhutla');
   if (mode === 'live') {
+    state.livePhase = undefined;
     if (shouldRefocus) focusRegion(state.activeRegion, true);
-    if (state.live) render(true);
-    else loadLive();
+    liveFeed.load(state.hours);
   } else {
+    liveFeed.cancel();
+    $('retry-live').hidden = true;
+    $('live-note').classList.remove('warn');
+    $('live-note').textContent = 'Arsip · Kalimantan Tengah, September 2019';
+    render(true);
     loadReplay();
   }
 }
 
+$('retry-live').addEventListener('click', () => liveFeed.load(state.hours));
 for (const b of document.querySelectorAll('[data-mode]')) {
   b.addEventListener('click', () => setMode(b.dataset.mode, true));
 }
@@ -582,7 +581,7 @@ for (const b of document.querySelectorAll('[data-hours]')) {
   b.addEventListener('click', () => {
     state.hours = Number(b.dataset.hours);
     for (const x of document.querySelectorAll('[data-hours]')) x.setAttribute('aria-pressed', String(x === b));
-    loadLive();
+    liveFeed.load(state.hours);
   });
 }
 for (const b of document.querySelectorAll('[data-region]')) {
@@ -620,6 +619,7 @@ $('replay-speed').addEventListener('click', () => {
 });
 
 $('toggle-3d').addEventListener('change', (e) => {
+  if (!map) return;
   const dur = reducedMotion() ? 0 : 900;
   if (e.target.checked) {
     map.setTerrain({ source: 'dem', exaggeration: 1.5 });
@@ -632,7 +632,7 @@ $('toggle-3d').addEventListener('change', (e) => {
   }
 });
 $('toggle-imagery').addEventListener('change', (e) => {
-  map.setLayoutProperty('imagery', 'visibility', e.target.checked ? 'visible' : 'none');
+  map?.setLayoutProperty('imagery', 'visibility', e.target.checked ? 'visible' : 'none');
 });
 
 function setPanelOpen(open) {
@@ -643,7 +643,7 @@ toggleBtn.addEventListener('click', () => setPanelOpen(panelEl.dataset.open !== 
 reopenBtn.addEventListener('click', () => setPanelOpen(true));
 
 // ---------- layer peta ----------
-map.on('load', () => {
+function addMapLayers() {
   if (typeof map.setSky === 'function') {
     map.setSky({
       'sky-color': '#0e0f0c',
@@ -823,23 +823,22 @@ map.on('load', () => {
 
   map.on('click', interactiveLayers, (e) => {
     const f = e.features[0];
+    if (!f) return;
     const p = f.properties;
     const [lon, lat] = f.geometry.coordinates;
     const loc = locateIndonesia(lat, lon);
-    const el = document.createElement('div');
-    el.className = 'pop';
 
     const catLabel =
       p.kind === 'industri'
-        ? `Industri · ${p.subType || 'Termal Tetap'}`
+        ? `Dugaan sumber tetap · ${p.subType || 'termal'}`
         : p.kind === 'vulkanik'
-          ? 'Vulkanik · Kawah Gunung Api'
+          ? 'Dekat kawah gunung api'
           : p.peat
-            ? 'Karhutla · Koridor Gambut'
-            : 'Karhutla · Lahan/Hutan';
+            ? 'Titik panas · zona gambut perkiraan'
+            : 'Titik panas · sumber belum terverifikasi';
 
     const rows = [['Kategori', catLabel]];
-    if (p.siteName) rows.push(['Fasilitas', p.siteName]);
+    if (p.siteName) rows.push(['Katalog atau persistensi', p.siteName]);
     rows.push(
       ['Provinsi', loc.province],
       ['Waktu', formatZoneTime(p.ts, loc.tz)],
@@ -850,13 +849,7 @@ map.on('load', () => {
     if (p.dn) rows.push(['Lintasan', p.dn === 'N' ? 'Malam' : 'Siang']);
     rows.push(['Koordinat', `${lat.toFixed(4)}, ${lon.toFixed(4)}`]);
 
-    for (const [k, v] of rows) {
-      const dt = document.createElement('dt');
-      dt.textContent = k;
-      const dd = document.createElement('dd');
-      dd.textContent = v;
-      el.append(dt, dd);
-    }
+    const el = detailList(rows);
     new maplibregl.Popup({ closeButton: true, maxWidth: '300px' })
       .setLngLat(f.geometry.coordinates)
       .setDOMContent(el)
@@ -864,5 +857,30 @@ map.on('load', () => {
   });
 
   syncSourceVisibility();
-  setMode('live', false);
+}
+
+setMode('live', false);
+startSentinelMap(() => ({
+  container: 'map',
+  style: STYLE,
+  bounds: isMobile() ? MOBILE_INITIAL_BOUNDS : REGIONS[0].bounds,
+  fitBoundsOptions: { padding: getMapPadding(), maxZoom: 6 },
+  maxBounds: INDONESIA_MAX_BOUNDS,
+  maxPitch: 80,
+  attributionControl: { compact: true, customAttribution: 'Hotspot: NASA FIRMS · DEM: AWS Terrain Tiles' }
+}), (readyMap, library) => {
+  map = readyMap;
+  maplibregl = library;
+  addMapLayers();
+  for (const control of document.querySelectorAll('[data-map-control]')) control.disabled = false;
+  if (state.mode === 'replay' && state.replay) {
+    const [a, b, c, d] = state.replay.bbox;
+    map.fitBounds([[a, b], [c, d]], { padding: getMapPadding(), duration: 0 });
+  }
+  render(true);
+}, () => {
+  map = undefined;
+  $('map-note').hidden = false;
+  for (const control of document.querySelectorAll('[data-map-control]')) control.disabled = true;
+  setPanelOpen(true);
 });

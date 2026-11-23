@@ -1,19 +1,19 @@
 // Worker publik fire.transbulent.id: aset statis, API hotspot (dengan edge cache & agregasi persistensi), dan ingest FIRMS terjadwal ke D1.
 // MAP_KEY FIRMS hanya ada di secret FIRMS_MAP_KEY dan tidak pernah dikirim ke browser.
+import { describeIngest, publicRun, recordIngestFailure, sourceFailure, withIngestLease } from './sentinel-ingest.js';
+
 
 const FIRMS_BASE = 'https://firms.modaps.eosdis.nasa.gov/api/area/csv';
 // Batas timur 141,02° = garis batas RI–PNG; lebih dari itu memasukkan titik PNG.
 const INDONESIA_BBOX = '94,-11.5,141.02,6.5';
-const SOURCES = ['VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT', 'VIIRS_SNPP_NRT'];
+const SOURCES = ['VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT'];
 // Rentang 1 hari FIRMS sering belum memuat lintasan terbaru; ambil 2 hari lalu buang duplikat lewat PRIMARY KEY.
 const INGEST_DAYS = 2;
 const RETAIN_SECONDS = 7 * 24 * 3600;
-const STALE_SECONDS = 45 * 60;
-const LOCK_SECONDS = 90;
-const RETRY_COOLDOWN_SECONDS = 5 * 60;
+const STALE_SECONDS = 60 * 60;
 const VALID_HOURS = [24, 48, 72, 168];
 const PERSIST_CELL = 0.02;
-const CACHE_VER = 2;
+const CACHE_VER = 3;
 const ROWS_PER_INSERT = 12; // 8 kolom x 12 baris = 96 parameter, di bawah batas D1 (100)
 
 const CSP = [
@@ -52,7 +52,7 @@ function securityHeaders(headers) {
   headers.set('Content-Security-Policy', CSP);
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  headers.set('Permissions-Policy', 'geolocation=(self), camera=(), microphone=()');
+  headers.set('Permissions-Policy', 'geolocation=(), camera=(), microphone=()');
   headers.set('Strict-Transport-Security', 'max-age=31536000');
   return headers;
 }
@@ -91,7 +91,7 @@ export function parseFirmsCsv(text, source) {
   const iLat = col('latitude'), iLon = col('longitude'), iFrp = col('frp'), iConf = col('confidence');
   const iDate = col('acq_date'), iTime = col('acq_time'), iSat = col('satellite'), iDn = col('daynight');
   if (iLat < 0 || iLon < 0 || iDate < 0 || iTime < 0) {
-    throw new Error(`FIRMS ${source}: respons bukan CSV hotspot: ${lines[0].slice(0, 120)}`);
+    throw new Error('Invalid FIRMS CSV header');
   }
   const rows = [];
   for (let n = 1; n < lines.length; n++) {
@@ -130,7 +130,10 @@ async function purgeHotspotCache() {
 }
 
 async function ingest(env) {
-  if (!env.FIRMS_MAP_KEY) throw new Error('Secret FIRMS_MAP_KEY belum diatur');
+  if (!env.FIRMS_MAP_KEY) {
+    await recordIngestFailure(env.DB, 'config_missing');
+    throw new Error('FIRMS ingest: missing configuration');
+  }
   const db = env.DB;
   const results = {};
   let total = 0;
@@ -159,7 +162,7 @@ async function ingest(env) {
         total += rows.length;
         okSources += 1;
       } catch (err) {
-        results[source] = `gagal: ${err.message}`;
+        results[source] = sourceFailure(err);
       }
     }
 
@@ -183,27 +186,12 @@ async function ingest(env) {
     await db.batch(metaOps);
     if (okSources > 0) await purgeHotspotCache();
     return attemptPayload;
-  } finally {
-    await db.prepare("DELETE FROM meta WHERE key='ingest_lock'").run().catch(() => {});
+  } catch {
+    await recordIngestFailure(db, 'ingest_error');
+    throw new Error('FIRMS ingest failed');
   }
 }
 
-async function maybeRefresh(env, ctx) {
-  const [last, attempt] = await Promise.all([readMetaJson(env, 'last_ingest'), readMetaJson(env, 'last_attempt')]);
-  const now = Math.floor(Date.now() / 1000);
-  if (last && now - last.at < STALE_SECONDS) return { last, attempt };
-  if (attempt && !attempt.ok && now - attempt.at < RETRY_COOLDOWN_SECONDS) return { last, attempt };
-
-  const claim = await env.DB.prepare(
-    "INSERT INTO meta (key,value) VALUES ('ingest_lock',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE CAST(meta.value AS INTEGER) < ?"
-  )
-    .bind(String(now), now - LOCK_SECONDS)
-    .run();
-  if (claim.meta.changes > 0) {
-    ctx.waitUntil(ingest(env).catch((e) => console.error('ingest', e)));
-  }
-  return { last, attempt };
-}
 
 async function queryPersistentCells(env) {
   const res = await env.DB.prepare(
@@ -217,6 +205,7 @@ async function queryPersistentCells(env) {
        MAX(lat) - MIN(lat) AS dlat,
        MAX(lon) - MIN(lon) AS dlon
      FROM detections
+     WHERE sat NOT IN ('N', 'VIIRS_SNPP_NRT')
      GROUP BY cx, cy
      HAVING days >= 2 AND passes >= 4`
   )
@@ -242,14 +231,15 @@ async function hotspots(url, env, ctx) {
   if (cached) return cached;
 
   const since = Math.floor(Date.now() / 1000) - hours * 3600;
-  const [{ last, attempt }, detRes, persistentCells] = await Promise.all([
-    maybeRefresh(env, ctx),
+  const [last, attempt, detRes, persistentCells] = await Promise.all([
+    readMetaJson(env, 'last_ingest'),
+    readMetaJson(env, 'last_attempt'),
     env.DB.prepare(
-      'SELECT lat,lon,frp,conf,sat,daynight,acq_ts FROM detections WHERE acq_ts >= ? ORDER BY acq_ts'
+      "SELECT lat,lon,frp,conf,sat,daynight,acq_ts FROM detections WHERE acq_ts >= ? AND sat NOT IN ('N', 'VIIRS_SNPP_NRT') ORDER BY acq_ts"
     )
       .bind(since)
       .all(),
-    queryPersistentCells(env).catch(() => [])
+    queryPersistentCells(env).catch(() => null)
   ]);
 
   const points = [];
@@ -258,20 +248,24 @@ async function hotspots(url, env, ctx) {
     points.push([r.lon, r.lat, r.frp, r.acq_ts, r.sat, r.conf, r.daynight]);
   }
 
+  const now = Math.floor(Date.now() / 1000);
+  const health = describeIngest(last, attempt, SOURCES, STALE_SECONDS, now);
+  if (!persistentCells && health.state === 'ready') health.state = 'partial';
   const resp = json(
     {
-      generated_at: Math.floor(Date.now() / 1000),
-      last_ingest: last,
-      last_attempt: attempt,
+      generated_at: now,
+      last_ingest: publicRun(last, SOURCES),
+      last_attempt: publicRun(attempt, SOURCES),
+      health,
       hours,
-      persistent_cells: persistentCells,
+      persistent_cells: persistentCells ?? [],
       // [lon, lat, frp, acq_ts, sat, conf, daynight]
       points
     },
     200,
-    300
+    health.state === 'unavailable' ? 0 : 300
   );
-  ctx.waitUntil(cache.put(cacheKey, resp.clone()));
+  if (health.state !== 'unavailable') ctx.waitUntil(cache.put(cacheKey, resp.clone()));
   return resp;
 }
 
@@ -293,7 +287,12 @@ export default {
           readMetaJson(env, 'last_ingest'),
           readMetaJson(env, 'last_attempt')
         ]);
-        return json({ last_ingest: last, last_attempt: attempt, stored: count.n }, 200, 60);
+        return json({
+          last_ingest: publicRun(last, SOURCES),
+          last_attempt: publicRun(attempt, SOURCES),
+          health: describeIngest(last, attempt, SOURCES, STALE_SECONDS, Math.floor(Date.now() / 1000)),
+          stored: count.n
+        }, 200, 60);
       }
       if (url.pathname.startsWith('/api/')) return json({ error: 'not found' }, 404);
     } catch (err) {
@@ -307,6 +306,6 @@ export default {
   },
 
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(ingest(env));
+    ctx.waitUntil(withIngestLease(env.DB, () => ingest(env)));
   }
 };
