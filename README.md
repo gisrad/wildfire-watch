@@ -8,7 +8,7 @@
 [![Edge](https://img.shields.io/badge/Edge-Cloudflare_Workers_+_D1-f38020?style=flat-square&logo=cloudflareworkers&logoColor=white)](https://workers.cloudflare.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](LICENSE)
 
-![Sentinel Api desktop view focused across the Indonesian archipelago with panel-aware framing and live thermal source separation](docs/preview-desktop.png)
+![Sentinel Api desktop view across the Indonesian archipelago with data status, land clusters and suspected stationary source flags](docs/preview-desktop.png)
 
 ---
 

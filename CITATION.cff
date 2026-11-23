@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-title: "Wildfire Watch (Sentinel Api): Real-Time Indonesia VIIRS Hotspot & Stationary Industrial Thermal Separation"
+title: "Wildfire Watch (Sentinel Api): Real-Time Indonesia VIIRS Hotspot Monitor with Suspected Stationary Thermal Source Flagging"
 message: "If you use this software or methodology in your research, please cite it using the metadata below."
 type: software
 authors:

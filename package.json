@@ -1,7 +1,7 @@
 {
   "name": "wildfire-watch",
   "version": "1.1.0",
-  "description": "Real-time Indonesia wildfire & peatland hotspot monitor (NASA FIRMS VIIRS 375m) with stationary industrial/PLTU/smelter & volcano separation, 3D terrain, and historical karhutla replay.",
+  "description": "Indonesia wildfire & peatland hotspot monitor (NASA FIRMS VIIRS 375 m, NOAA-20/21) that flags suspected stationary industrial/PLTU/smelter and volcano sources, with 3D terrain and a historical karhutla replay.",
   "license": "MIT",
   "type": "module",
   "homepage": "https://fire.transbulent.id",
