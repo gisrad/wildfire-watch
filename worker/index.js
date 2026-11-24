@@ -18,7 +18,8 @@ const ROWS_PER_INSERT = 12; // 8 kolom x 12 baris = 96 parameter, di bawah batas
 
 const CSP = [
   "default-src 'self'",
-  "script-src 'self'",
+  // Cloudflare auto-injects a versioned /beacon.min.js/<build> URL; the collector is same-origin.
+  "script-src 'self' https://static.cloudflareinsights.com/beacon.min.js/",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://tiles.openfreemap.org https://s3.amazonaws.com https://server.arcgisonline.com",
   "connect-src 'self' https://tiles.openfreemap.org https://s3.amazonaws.com https://server.arcgisonline.com",
