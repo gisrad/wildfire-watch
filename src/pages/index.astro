@@ -335,12 +335,16 @@ const structuredData = {
 
       .stats {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 6px;
         margin: 10px 14px 8px;
       }
 
       .stats div {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-width: 0;
         border: 1px solid var(--line);
         border-radius: 6px;
         padding: 6px 7px;
@@ -351,10 +355,11 @@ const structuredData = {
 
       .stats dt {
         font-size: 9.5px;
+        line-height: 1.2;
         color: var(--ash);
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        white-space: nowrap;
+        overflow-wrap: break-word;
       }
 
       .stats dd {
@@ -407,12 +412,13 @@ const structuredData = {
 
       .source-pills {
         display: flex;
+        flex-wrap: wrap;
         gap: 6px;
         margin: 6px 0;
       }
 
       .source-pills button {
-        flex: 1;
+        flex: 1 1 auto;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -615,6 +621,7 @@ const structuredData = {
       @media (min-width: 641px) {
         #panel[data-open="false"] { display: none; }
         #panel[data-open="false"] ~ #region-bar { left: 112px; }
+        #map .maplibregl-ctrl-bottom-right { bottom: 48px; }
       }
 
       .maplibregl-popup-content {
@@ -666,6 +673,7 @@ const structuredData = {
           bottom: 8px;
           width: auto;
           max-height: 60%;
+          padding-bottom: 50px;
         }
         #panel-toggle { min-width: 40px; min-height: 40px; }
         .brand { padding: 6px 10px; }
